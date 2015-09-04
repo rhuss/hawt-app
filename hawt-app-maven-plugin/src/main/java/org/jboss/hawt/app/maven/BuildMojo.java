@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.regex.Matcher;
 
+import io.fabric8.runsh.RunShLoader;
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.dependency.fromDependencies.AbstractDependencyFilterMojo;
@@ -157,8 +158,7 @@ public class BuildMojo extends AbstractDependencyFilterMojo {
             interpolations.put("mvn.main", main);
         }
 
-        copyResource("bin/run", new File(binDir, "run"), "\n", interpolations);
-        chmodExecutable(new File(binDir, "run"));
+        createRunScript(new File(binDir, "run"));
 
         if( source!=null && source.exists() ) {
             try {
@@ -181,34 +181,25 @@ public class BuildMojo extends AbstractDependencyFilterMojo {
         projectHelper.attachArtifact(project, "tar.gz", archiveClassifier, archive);
     }
 
+    private void createRunScript(File dest) throws MojoExecutionException {
+        try {
+            // TODO: Include mvn.main or mvn.artefact
+            // - either by writing it out to a colocated config file
+            // - or including it into the script itself. This functionality could be put
+            //   into run-java-sh, too
+            RunShLoader.copyRunScript(dest);
+            chmodExecutable(dest);
+        } catch (IOException e) {
+            throw new MojoExecutionException("Could create the " + dest + " file", e);
+        }
+
+    }
+
     private void chmodExecutable(File file) {
         try {
             Files.setPosixFilePermissions(file.toPath(), PosixFilePermissions.fromString("rwxr-xr-x"));
         } catch (Throwable ignore) {
             // we tried our best, perhaps the OS does not support posix file perms.
-        }
-    }
-
-    private void copyResource(String source, File target, String separator, HashMap<String, String> interpolations) throws MojoExecutionException {
-
-        try {
-            String content = loadTextResource(getClass().getResource(source));
-            if( interpolations!=null ) {
-                content = StringUtils.interpolate(content, interpolations);
-            }
-            content = content.replaceAll("\\r?\\n", Matcher.quoteReplacement(separator));
-            FileUtils.fileWrite(target, content);
-        } catch (IOException e) {
-            throw new MojoExecutionException("Could create the "+target+" file", e);
-        }
-    }
-
-    private String loadTextResource(URL resource) throws IOException {
-        InputStream is = resource.openStream();
-        try {
-            return IOUtil.toString(is, "UTF-8");
-        } finally {
-            IOUtil.close(is);
         }
     }
 
