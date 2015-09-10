@@ -15,15 +15,10 @@
  */
 package org.jboss.hawt.app.maven;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.URL;
+import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.attribute.PosixFilePermissions;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.regex.Matcher;
+import java.util.*;
 
 import io.fabric8.runsh.RunShLoader;
 import org.apache.maven.artifact.Artifact;
@@ -42,7 +37,6 @@ import org.apache.maven.shared.artifact.filter.collection.ArtifactsFilter;
 import org.codehaus.plexus.archiver.Archiver;
 import org.codehaus.plexus.archiver.tar.TarArchiver;
 import org.codehaus.plexus.util.FileUtils;
-import org.codehaus.plexus.util.IOUtil;
 import org.codehaus.plexus.util.StringUtils;
 
 import static org.codehaus.plexus.archiver.util.DefaultFileSet.fileSet;
@@ -145,20 +139,19 @@ public class BuildMojo extends AbstractDependencyFilterMojo {
         }
 
         // Finally lets write the classpath.
-        String classpathTxt = StringUtils.join(classpath.iterator(), "\r\n")+"\r\n";
+        String classpathTxt = StringUtils.join(classpath.iterator(), ":")+"\r\n";
         try {
-            FileUtils.fileWrite(new File(libDir, ".classpath"), classpathTxt);
+            FileUtils.fileWrite(new File(libDir, "run-classpath"), classpathTxt);
         } catch (IOException e) {
-            throw new MojoExecutionException("Could create the .classpath file", e);
+            throw new MojoExecutionException("Could create the run-classpath file", e);
         }
 
-        HashMap<String, String> interpolations = new HashMap<String, String>();
-        interpolations.put("mvn.artifactId", project.getArtifactId());
+        Properties env = new Properties();
+        env.put("JAVA_APP_NAME", project.getArtifactId());
         if( main!=null ) {
-            interpolations.put("mvn.main", main);
+            env.put("JAVA_MAIN_CLASS", main);
         }
-
-        createRunScript(new File(binDir, "run"));
+        createRunScriptAndEnv(new File(binDir, "run"), env);
 
         if( source!=null && source.exists() ) {
             try {
@@ -181,14 +174,18 @@ public class BuildMojo extends AbstractDependencyFilterMojo {
         projectHelper.attachArtifact(project, "tar.gz", archiveClassifier, archive);
     }
 
-    private void createRunScript(File dest) throws MojoExecutionException {
+    private void createRunScriptAndEnv(File dest, Properties env) throws MojoExecutionException {
         try {
-            // TODO: Include mvn.main or mvn.artefact
-            // - either by writing it out to a colocated config file
-            // - or including it into the script itself. This functionality could be put
-            //   into run-java-sh, too
             RunShLoader.copyRunScript(dest);
             chmodExecutable(dest);
+
+            try {
+                env.store(new FileWriter(new File(dest, "run-env.sh")),"run.sh environment");
+            } catch (IOException e) {
+                throw new MojoExecutionException("Could create run-env.sh: " + e, e);
+            }
+
+
         } catch (IOException e) {
             throw new MojoExecutionException("Could create the " + dest + " file", e);
         }
